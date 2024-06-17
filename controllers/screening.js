@@ -34,7 +34,7 @@ export const addScreening = async (req, res) => {
 
 export const getScreeningsById = async (req, res) => {
   try {
-    const screenings = await Screening.find({ movie_id: req.params.id }).exec();
+    const screenings = await Screening.find({ film: req.params.id }).exec();
 
     if (screenings.length === 0) {
       throw new Error("No screenings found");
@@ -106,7 +106,7 @@ export const getScreeningsByDate = async (req, res) => {
         $lte: endOfDay(new Date(`${year}-${month}-${day}`)),
       }),
     })
-      .populate("movie_id", "CName EName length photos")
+      .populate("film", "CName EName length photos")
       .exec();
 
     if (screenings.length === 0) {

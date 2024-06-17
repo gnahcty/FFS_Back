@@ -3,7 +3,7 @@ import { Schema, model, ObjectId } from "mongoose";
 const listSchema = new Schema({
   screening: {
     type: ObjectId,
-    ref: "screenings",
+    ref: "screening",
     required: [true, "screening id missing"],
   },
   user: {
@@ -12,15 +12,13 @@ const listSchema = new Schema({
     required: [true, "user id missing"],
   },
   clash: {
-    type: Boolean,
+    type: Number,
+    default: 0,
   },
   locked: {
     type: Boolean,
   },
   hidden: {
-    type: Boolean,
-  },
-  deleted: {
     type: Boolean,
   },
 });

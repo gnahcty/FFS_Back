@@ -1,7 +1,7 @@
 import { Schema, model, ObjectId } from "mongoose";
 
 const screeningSchema = new Schema({
-  movie_id: {
+  film: {
     type: ObjectId,
     ref: "film",
     required: [true, "film id missing"],
@@ -13,6 +13,9 @@ const screeningSchema = new Schema({
   time: {
     type: Date,
     required: [true, "time missing"],
+  },
+  endTime: {
+    type: Date,
   },
   QASessions: {
     type: Boolean,

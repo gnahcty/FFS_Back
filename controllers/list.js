@@ -1,30 +1,81 @@
 import { StatusCodes } from "http-status-codes";
 import { getMessageFromValidationError } from "../utils/HandleMongooseError.js";
 // import mongoose from "mongoose";
+// import startOfDay from "date-fns/startOfDay";
+// import endOfDay from "date-fns/endOfDay";
+import isWithinInterval from "date-fns/isWithinInterval";
 import List from "../models/listSchema.js";
+
+const checkClash = async (list, action) => {
+  try {
+    const currentList = await list.populate("screening");
+
+    const userLists = await List.find({ user: list.user }).populate(
+      "screening"
+    );
+
+    const start = new Date(currentList.screening.time);
+    const end = new Date(currentList.screening.endTime);
+
+    for (const list of userLists) {
+      // Skip the current list and hidden lists
+      if (list._id.toString() === currentList._id.toString() || list.hidden) {
+        continue;
+      }
+      const screeningStart = new Date(list.screening.time);
+      const screeningEnd = new Date(list.screening.endTime);
+
+      // Check if screening time falls within the given time range
+      const clash =
+        isWithinInterval(screeningStart, { start, end }) ||
+        isWithinInterval(screeningEnd, { start, end }) ||
+        (screeningStart <= start && screeningEnd >= end);
+
+      // Update the clash status if there is a clash
+      if (clash) {
+        if (action === "add") {
+          list.clash++;
+          currentList.clash++;
+          await currentList.save();
+        } else {
+          list.clash--;
+        }
+        await list.save();
+      }
+    }
+  } catch (error) {
+    console.log(`Error checking clash for list ${list._id}:`, error.message);
+  }
+};
 
 export const addToList = async (req, res) => {
   try {
-    let screening = await List.findOne({
+    let list = await List.findOne({
       screening: req.body.screening,
       user: req.user._id,
-    });
-    if (!screening) {
-      screening = await List.create({
+    })
+      .populate("screening")
+      .exec();
+
+    if (!list) {
+      list = await List.create({
         screening: req.body.screening,
         user: req.user._id,
-        clash: req.body.clash,
-        locked: req.body.locked,
-        hidden: req.body.hidden,
-        deleted: req.body.deleted,
+        locked: false,
+        hidden: false,
+        deleted: false,
       });
+      await checkClash(list, "add");
       res.status(StatusCodes.OK).json({
         success: true,
         message: "created",
       });
     } else {
-      screening.deleted = true;
-      await screening.save();
+      await List.deleteOne({
+        screening: req.body.screening,
+        user: req.user._id,
+      });
+      await checkClash(list, "remove");
       res.status(StatusCodes.OK).json({
         success: true,
         message: "deleted",
@@ -51,39 +102,344 @@ export const addToList = async (req, res) => {
 
 export const getListsByUser = async (req, res) => {
   try {
-    const lists = await List.find({ user: req.body.user._id })
+    const lists = await List.find({ user: req.user._id })
       .populate({
         path: "screening",
         model: "screening",
         populate: {
-          path: "movie_id",
+          path: "film",
           model: "film",
+          select: "CName EName photos",
         },
       })
       .exec();
 
-    // Use Object.groupBy to group the screenings by film.CName
-    const groupedByFilm = Object.groupBy(
-      lists,
-      (list) => list.screening.movie_id.CName
-    );
+    // const groupedByFilm = {};
 
-    // Convert the grouped object to the desired array format
-    const result = Object.keys(groupedByFilm).map((filmName) => ({
-      [filmName]: groupedByFilm[filmName].map((list) => list.screening),
-    }));
+    // lists.forEach((list) => {
+    //   const filmName = list.screening.film.CName;
+
+    //   if (!groupedByFilm[filmName]) {
+    //     groupedByFilm[filmName] = [];
+    //   }
+
+    //   groupedByFilm[filmName].push(list.screening);
+    // });
+
+    // // Convert the grouped object to the desired array format
+    // const result = Object.keys(groupedByFilm).map((filmName) => ({
+    //   [filmName]: groupedByFilm[filmName],
+    // }));
+
     res.status(StatusCodes.OK).json({
       success: true,
-      result,
+      result: lists,
     });
   } catch (error) {
-    console.log(
-      `Error getting lists by user ${req.body.user._id}:`,
-      error.message
-    );
+    console.log(`Error getting lists by user ${req.user._id}:`, error.message);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: "internal server error",
     });
   }
 };
+
+// list.hidden = true; clash = 0;
+// 前端判斷是否要解鎖
+// body: {id : list id}
+export const hideList = async (req, res) => {
+  try {
+    const list = await List.findOne({ _id: req.body.id, user: req.user._id });
+
+    if (!list) {
+      res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "list not found",
+      });
+      return;
+    }
+
+    if (list.user.toString() !== req.user._id.toString()) {
+      res.status(StatusCodes.FORBIDDEN).json({
+        success: false,
+        message: "forbidden",
+      });
+      return;
+    }
+
+    if (list.hidden === true) return;
+
+    list.hidden = true;
+    // Reset the clash count
+    list.clash = 0;
+    checkClash(list, "remove");
+
+    await list.save();
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      message: "deleted",
+    });
+  } catch (error) {
+    console.log(`Error deleting list ${req.body.id}:`, error.message);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "internal server error",
+    });
+  }
+};
+
+// list.hidden = false; recount clash
+// 前端判斷是否要解鎖
+// body: {id : list id}
+export const unhideList = async (req, res) => {
+  try {
+    const list = await List.findOne({ _id: req.body.id, user: req.user._id });
+
+    if (!list) {
+      res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "list not found",
+      });
+      return;
+    }
+
+    if (list.user.toString() !== req.user._id.toString()) {
+      res.status(StatusCodes.FORBIDDEN).json({
+        success: false,
+        message: "forbidden",
+      });
+      return;
+    }
+
+    if (list.hidden === false) return;
+
+    list.hidden = false;
+    list.clash = 0;
+    checkClash(list, "add");
+
+    await list.save();
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      message: "revived",
+    });
+  } catch (error) {
+    console.log(`Error reviving list ${req.body.id}:`, error.message);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "internal server error",
+    });
+  }
+};
+
+// list.locked = true; unhide list if hidden; hide all other unhidden lists with the same film
+// body: {id : list id, filmID: film id}}
+export const lockList = async (req, res) => {
+  try {
+    const targetList = await List.findOne({
+      _id: req.body.id,
+      user: req.user._id,
+    });
+
+    if (!targetList) {
+      res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "list not found",
+      });
+      return;
+    }
+
+    if (targetList.user.toString() !== req.user._id.toString()) {
+      res.status(StatusCodes.FORBIDDEN).json({
+        success: false,
+        message: "forbidden",
+      });
+      return;
+    }
+
+    const sameFilmLists = await List.find({ user: req.user._id }).populate({
+      path: "screening",
+      match: { film: "req.body.filmID" },
+    });
+
+    // if the list is hidden, unhide it
+    if (targetList.hidden === true) {
+      targetList.hidden = false;
+      targetList.clash = 0;
+      checkClash(targetList, "add");
+    }
+
+    targetList.locked = true;
+
+    // unlock all other lists with the same film
+    for (const list of sameFilmLists) {
+      if (list._id.toString() !== targetList._id.toString()) {
+        list.locked = false;
+        // hide all other unhidden lists with the same film
+        if (list.hidden === false) {
+          list.hidden = true;
+          list.clash = 0;
+          checkClash(list, "remove");
+        }
+
+        await list.save();
+      }
+    }
+
+    await targetList.save();
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      message: "locked",
+    });
+  } catch (error) {
+    console.log(`Error locking list ${req.body.id}:`, error.message);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "internal server error",
+    });
+  }
+};
+
+// unlock all lists with the same film
+// body: {id : list id, filmID: film id}
+// 如果傳入的是鎖定場次，顯示所有場次
+// 如果傳入的是非鎖定場次，僅顯示該場次
+export const unlockFilm = async (req, res) => {
+  try {
+    const targetList = await List.findOne({
+      _id: req.body.id,
+      user: req.user._id,
+    });
+
+    if (!targetList) {
+      res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "list not found",
+      });
+      return;
+    }
+
+    if (targetList.user.toString() !== req.user._id.toString()) {
+      res.status(StatusCodes.FORBIDDEN).json({
+        success: false,
+        message: "forbidden",
+      });
+      return;
+    }
+
+    const sameFilmLists = await List.find({ user: req.user._id }).populate({
+      path: "screening",
+      match: { film: "req.body.filmID" },
+    });
+
+    for (const list of sameFilmLists) {
+      // unlock all lists of the same film
+      list.locked = false;
+      // if target list isn't hidden (therefore is the locked in screening)
+      if (targetList.hidden === false) {
+        // unhide all hidden lists of the same film
+        if (list.hidden === true) {
+          list.hidden = false;
+          list.clash = 0;
+          checkClash(list, "add");
+        }
+      }
+    }
+
+    // if target list is hidden (not the locked in screening)
+    // if (targetList.hidden === true) {
+    //   // only unhide the target list
+    //   targetList.hidden = false;
+    //   targetList.clash = 0;
+    //   checkClash(targetList, "add");
+    // }
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      message: "unlocked",
+    });
+  } catch (error) {
+    console.log(`Error unlocking list ${req.body.id}:`, error.message);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "internal server error",
+    });
+  }
+};
+
+// export const getListByDate = async (req, res) => {
+//   try {
+//     const date = req.body.date;
+
+//     const lists = await List.find({
+//       user: req.user._id,
+//       date: req.body.date,
+//       deleted: false,
+//     })
+//       .populate({
+//         path: "screening",
+//         model: "screening",
+//         populate: {
+//           path: "film",
+//           model: "film",
+//         },
+//         sort: { date: 1 },
+//       })
+//       .exec();
+
+//     res.status(StatusCodes.OK).json({
+//       success: true,
+//       result: lists,
+//     });
+//   } catch (error) {
+//     console.log(
+//       `Error getting lists for date ${req.body.date}:`,
+//       error.message
+//     );
+//     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+//       success: false,
+//       message: "internal server error",
+//     });
+//   }
+// };
+
+// export const updateList = async (req, res) => {
+//   try {
+//     const list = await List.findOne({ _id: req.body.id, user: req.user._id });
+
+//     if (!list) {
+//       res.status(StatusCodes.NOT_FOUND).json({
+//         success: false,
+//         message: "list not found",
+//       });
+//       return;
+//     }
+
+//     if (list.user.toString() !== req.user._id.toString()) {
+//       res.status(StatusCodes.FORBIDDEN).json({
+//         success: false,
+//         message: "forbidden",
+//       });
+//       return;
+//     }
+
+//     list.locked = req.body.locked;
+//     list.hidden = req.body.hidden;
+//     list.deleted = req.body.deleted;
+
+//     await list.save();
+
+//     res.status(StatusCodes.OK).json({
+//       success: true,
+//       message: "updated",
+//     });
+//   } catch (error) {
+//     console.log(`Error updating list ${req.body.id}:`, error.message);
+//     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+//       success: false,
+//       message: "internal server error",
+//     });
+//   }
+// };

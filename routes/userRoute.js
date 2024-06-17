@@ -14,7 +14,7 @@ const router = express.Router();
 
 router.post("/", createUser);
 router.post("/login", contentType("application/json"), auth.login, login);
-router.delete("/logout", auth.jwt, logout);
+router.post("/logout", auth.jwt, logout);
 router.patch("/extend", auth.jwt, extend);
 router.get("/profile", auth.jwt, getProfile);
 // router.post("/watchList", auth.jwt, modifyList);

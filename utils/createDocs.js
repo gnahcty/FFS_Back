@@ -63,7 +63,7 @@ export const createDocuments = async () => {
         }
 
         const screening = new Screening({
-          movie_id: savedFilm._id,
+          film: savedFilm._id,
           place,
           time: screeningDate,
           QASessions: screeningData.QASessions || false,
