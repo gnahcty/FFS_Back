@@ -107,6 +107,7 @@ export const getScreeningsByDate = async (req, res) => {
       }),
     })
       .populate("film", "CName EName length photos")
+      .sort({ place: 1 })
       .exec();
 
     if (screenings.length === 0) {

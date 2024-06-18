@@ -42,7 +42,7 @@ app.use(
      * @param {*} callback callback(錯誤, 是否允許請求)
      */
 
-    origin(origin, callback) {
+    origin (origin, callback) {
       if (
         origin === undefined ||
         origin.includes("github") ||
