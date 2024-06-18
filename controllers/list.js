@@ -172,7 +172,7 @@ export const hideList = async (req, res) => {
     list.hidden = true;
     // Reset the clash count
     list.clash = 0;
-    checkClash(list, "remove");
+    await checkClash(list, "remove");
 
     await list.save();
 
@@ -216,7 +216,7 @@ export const unhideList = async (req, res) => {
 
     list.hidden = false;
     list.clash = 0;
-    checkClash(list, "add");
+    await checkClash(list, "add");
 
     await list.save();
 
@@ -258,16 +258,21 @@ export const lockList = async (req, res) => {
       return;
     }
 
-    const sameFilmLists = await List.find({ user: req.user._id }).populate({
+    // find all list of same user, 如果screening.film = req.body.filmID會顯示，否則screening為null
+    const populatedList = await List.find({ user: req.user._id }).populate({
       path: "screening",
-      match: { film: "req.body.filmID" },
+      match: { film: req.body.filmID },
     });
+
+    const sameFilmLists = populatedList.filter(
+      (list) => list.screening !== null
+    );
 
     // if the list is hidden, unhide it
     if (targetList.hidden === true) {
       targetList.hidden = false;
       targetList.clash = 0;
-      checkClash(targetList, "add");
+      await checkClash(targetList, "add");
     }
 
     targetList.locked = true;
@@ -280,7 +285,7 @@ export const lockList = async (req, res) => {
         if (list.hidden === false) {
           list.hidden = true;
           list.clash = 0;
-          checkClash(list, "remove");
+          await checkClash(list, "remove");
         }
 
         await list.save();
@@ -295,6 +300,7 @@ export const lockList = async (req, res) => {
     });
   } catch (error) {
     console.log(`Error locking list ${req.body.id}:`, error.message);
+    console.log(req.body.filmID);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
       success: false,
       message: "internal server error",
@@ -329,10 +335,15 @@ export const unlockFilm = async (req, res) => {
       return;
     }
 
-    const sameFilmLists = await List.find({ user: req.user._id }).populate({
+    // find all list of same user, 如果screening.film = req.body.filmID會顯示，否則screening為null
+    const populatedList = await List.find({ user: req.user._id }).populate({
       path: "screening",
-      match: { film: "req.body.filmID" },
+      match: { film: req.body.filmID },
     });
+
+    const sameFilmLists = populatedList.filter(
+      (list) => list.screening !== null
+    );
 
     for (const list of sameFilmLists) {
       // unlock all lists of the same film
@@ -343,18 +354,11 @@ export const unlockFilm = async (req, res) => {
         if (list.hidden === true) {
           list.hidden = false;
           list.clash = 0;
-          checkClash(list, "add");
+          await checkClash(list, "add");
         }
       }
+      list.save();
     }
-
-    // if target list is hidden (not the locked in screening)
-    // if (targetList.hidden === true) {
-    //   // only unhide the target list
-    //   targetList.hidden = false;
-    //   targetList.clash = 0;
-    //   checkClash(targetList, "add");
-    // }
 
     res.status(StatusCodes.OK).json({
       success: true,
@@ -368,78 +372,3 @@ export const unlockFilm = async (req, res) => {
     });
   }
 };
-
-// export const getListByDate = async (req, res) => {
-//   try {
-//     const date = req.body.date;
-
-//     const lists = await List.find({
-//       user: req.user._id,
-//       date: req.body.date,
-//       deleted: false,
-//     })
-//       .populate({
-//         path: "screening",
-//         model: "screening",
-//         populate: {
-//           path: "film",
-//           model: "film",
-//         },
-//         sort: { date: 1 },
-//       })
-//       .exec();
-
-//     res.status(StatusCodes.OK).json({
-//       success: true,
-//       result: lists,
-//     });
-//   } catch (error) {
-//     console.log(
-//       `Error getting lists for date ${req.body.date}:`,
-//       error.message
-//     );
-//     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-//       success: false,
-//       message: "internal server error",
-//     });
-//   }
-// };
-
-// export const updateList = async (req, res) => {
-//   try {
-//     const list = await List.findOne({ _id: req.body.id, user: req.user._id });
-
-//     if (!list) {
-//       res.status(StatusCodes.NOT_FOUND).json({
-//         success: false,
-//         message: "list not found",
-//       });
-//       return;
-//     }
-
-//     if (list.user.toString() !== req.user._id.toString()) {
-//       res.status(StatusCodes.FORBIDDEN).json({
-//         success: false,
-//         message: "forbidden",
-//       });
-//       return;
-//     }
-
-//     list.locked = req.body.locked;
-//     list.hidden = req.body.hidden;
-//     list.deleted = req.body.deleted;
-
-//     await list.save();
-
-//     res.status(StatusCodes.OK).json({
-//       success: true,
-//       message: "updated",
-//     });
-//   } catch (error) {
-//     console.log(`Error updating list ${req.body.id}:`, error.message);
-//     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-//       success: false,
-//       message: "internal server error",
-//     });
-//   }
-// };

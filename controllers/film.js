@@ -128,41 +128,6 @@ export const getFilmByCategory = async (req, res) => {
   }
 };
 
-// export const getPicByCategory = async (req, res) => {
-//   try {
-//     const pic = await Film.findOne({ category: req.params.category }, "photos");
-
-//     if (!pic) throw new Error(`類別${req.params.category}查無圖片`);
-
-//     res.status(StatusCodes.OK).json({
-//       success: true,
-//       result: pic,
-//     });
-//   } catch (error) {
-//     console.error(
-//       `Error getting pic for category ${req.params.category} :`,
-//       error.message
-//     );
-
-//     if (error.name === "CastError") {
-//       res.status(StatusCodes.BAD_REQUEST).json({
-//         success: false,
-//         message: "查詢格式錯誤",
-//       });
-//     } else if (error.message === "此類別查無圖片") {
-//       res.status(StatusCodes.NOT_FOUND).json({
-//         success: false,
-//         message: "此類別查無圖片",
-//       });
-//     } else {
-//       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-//         success: false,
-//         message: "伺服器錯誤",
-//       });
-//     }
-//   }
-// };
-
 export const getFirstPicsOfAllFilms = async (req, res) => {
   try {
     const films = await Film.find({});
