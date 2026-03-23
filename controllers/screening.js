@@ -4,6 +4,27 @@ import { getMessageFromValidationError } from "../utils/HandleMongooseError.js";
 import mongoose from "mongoose";
 import endOfDay from "date-fns/endOfDay";
 import startOfDay from "date-fns/startOfDay";
+import parse from "date-fns/parse";
+import isValid from "date-fns/isValid";
+
+const parseScreeningDateParam = (dateParam, year) => {
+  if (typeof dateParam !== "string" || !dateParam.trim()) {
+    return null;
+  }
+
+  const normalizedDate = `${dateParam.trim()}_${year}`;
+  const supportedFormats = ["MMMM_d_yyyy", "MMMM_dd_yyyy", "M_d_yyyy", "MM_dd_yyyy"];
+
+  for (const formatString of supportedFormats) {
+    const parsedDate = parse(normalizedDate, formatString, new Date());
+
+    if (isValid(parsedDate)) {
+      return parsedDate;
+    }
+  }
+
+  return null;
+};
 
 export const addScreening = async (req, res) => {
   try {
@@ -98,7 +119,6 @@ export const getFestivalDateRange = async (req, res) => {
 export const getScreeningsByDate = async (req, res) => {
   try {
     const date = req.params.date;
-    const [month, day] = date.split("_");
     const earliestScreening = await Screening.findOne().sort({ time: 1 }).exec();
 
     if (!earliestScreening) {
@@ -106,7 +126,15 @@ export const getScreeningsByDate = async (req, res) => {
     }
 
     const year = earliestScreening.time.getFullYear();
-    const targetDate = new Date(year, Number(month) - 1, Number(day));
+    const targetDate = parseScreeningDateParam(date, year);
+
+    if (!targetDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: "Invalid screening date format",
+      });
+    }
+
     const screenings = await Screening.find({
       time: mongoose.trusted({
         $gte: startOfDay(targetDate),
