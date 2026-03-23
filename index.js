@@ -26,6 +26,12 @@ if (missingEnvVars.length > 0) {
 // 建立express伺服器
 const app = express();
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://ffscheduler.onrender.com",
+];
+
 // 阻擋過於頻繁的請求
 // app.use(rateLimit({
 //   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -52,14 +58,10 @@ app.use(
      */
 
     origin (origin, callback) {
-      if (
-        origin === undefined ||
-        origin.includes("github") ||
-        origin.includes("localhost")
-      ) {
-        callback(null, true); // Allow requests from GitHub and localhost
+      if (origin === undefined || allowedOrigins.includes(origin)) {
+        callback(null, true);
       } else {
-        callback(new Error("Not allowed by CORS"), false); // Reject other origins
+        callback(new Error("Not allowed by CORS"), false);
       }
     },
   })
