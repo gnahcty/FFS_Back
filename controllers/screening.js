@@ -99,11 +99,18 @@ export const getScreeningsByDate = async (req, res) => {
   try {
     const date = req.params.date;
     const [month, day] = date.split("_");
-    const year = new Date().getFullYear(); // Use the current year
+    const earliestScreening = await Screening.findOne().sort({ time: 1 }).exec();
+
+    if (!earliestScreening) {
+      throw new Error("No screenings found");
+    }
+
+    const year = earliestScreening.time.getFullYear();
+    const targetDate = new Date(year, Number(month) - 1, Number(day));
     const screenings = await Screening.find({
       time: mongoose.trusted({
-        $gte: startOfDay(new Date(`${year}-${month}-${day}`)),
-        $lte: endOfDay(new Date(`${year}-${month}-${day}`)),
+        $gte: startOfDay(targetDate),
+        $lte: endOfDay(targetDate),
       }),
     })
       .populate("film", "CName EName length photos")

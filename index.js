@@ -9,10 +9,19 @@ import userRoute from "./routes/userRoute.js";
 import filmRoute from "./routes/filmRoute.js";
 import screeningRoute from "./routes/screeningRoute.js";
 import listRoute from "./routes/listRoute.js";
-import "./utils/passport.js";
 
-// 連線資料庫
-mongoose.connect(process.env.DB_URL);
+const requiredEnvVars = ["DB_URL", "JWT_SECRET"];
+
+const missingEnvVars = requiredEnvVars.filter(
+  (envVar) => !process.env[envVar] || process.env[envVar].trim() === ""
+);
+
+if (missingEnvVars.length > 0) {
+  console.error(
+    `Missing required environment variables: ${missingEnvVars.join(", ")}`
+  );
+  process.exit(1);
+}
 
 // 建立express伺服器
 const app = express();
@@ -92,10 +101,21 @@ app.all("*", (_, res) => {
   });
 });
 
-// Start the server and connect to the database
-app.listen(process.env.PORT || 4000, async () => {
-  console.log("server up");
-  await mongoose.connect(process.env.DB_URL); // Connect to MongoDB
-  mongoose.set("sanitizeFilter", true); // Enable sanitization for queries
-  console.log("database connected");
-});
+// Start the server after the database connection is ready
+const startServer = async () => {
+  try {
+    await import("./utils/passport.js");
+    await mongoose.connect(process.env.DB_URL);
+    mongoose.set("sanitizeFilter", true);
+    console.log("database connected");
+
+    app.listen(process.env.PORT || 4000, () => {
+      console.log(`server up on port ${process.env.PORT || 4000}`);
+    });
+  } catch (error) {
+    console.error(`database connection failed: ${error.message}`);
+    process.exit(1);
+  }
+};
+
+startServer();
